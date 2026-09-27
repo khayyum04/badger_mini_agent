@@ -71,7 +71,7 @@ environment:
     TQDM_DISABLE: '1'
     DEBIAN_FRONTEND: noninteractive
 model:
-  model_class: litellm
+  model_class: badger_mini.harbor_agent.BadgerLitellmModel
   cost_tracking: ignore_errors
   observation_template: |
     {%- if output.output | length < 10000 -%}

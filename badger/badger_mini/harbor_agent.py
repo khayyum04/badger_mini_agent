@@ -35,7 +35,9 @@ from harbor.environments.base import BaseEnvironment  # noqa: E402
 from harbor.models.agent.context import AgentContext  # noqa: E402
 from minisweagent.agents.default import DefaultAgent  # noqa: E402
 from minisweagent.exceptions import Submitted  # noqa: E402
+import litellm  # noqa: E402
 from minisweagent.models import get_model  # noqa: E402
+from minisweagent.models.litellm_model import LitellmModel  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -126,6 +128,26 @@ class HarborEnvironment:
                 }
             }
         }
+
+
+class BadgerLitellmModel(LitellmModel):
+    """LitellmModel that doesn't retry 400s: a wrong model id or bad param never fixes itself."""
+
+    abort_exceptions = [*LitellmModel.abort_exceptions, litellm.exceptions.BadRequestError]
+
+
+# Endpoint misconfiguration: fail the trial loudly instead of letting every task "finish" with no work.
+CONFIG_ERRORS = (
+    litellm.exceptions.AuthenticationError,
+    litellm.exceptions.NotFoundError,
+    litellm.exceptions.PermissionDeniedError,
+)
+
+
+def _is_config_error(e: Exception) -> bool:
+    if isinstance(e, litellm.exceptions.ContextWindowExceededError):
+        return False
+    return isinstance(e, CONFIG_ERRORS) or isinstance(e, litellm.exceptions.BadRequestError)
 
 
 class HarborSyncedAgent(DefaultAgent):
@@ -236,6 +258,8 @@ class BadgerMiniAgent(BaseAgent):
             stop.set()  # the worker thread exits at its next model call or command
             raise
         except Exception as e:
+            if _is_config_error(e):
+                raise
             # If run() raises, Harbor skips the verifier; return so the container's state still gets graded.
             self.logger.warning("mini-swe-agent crashed (%s: %s); returning so the task is still graded", type(e).__name__, e)
             return
