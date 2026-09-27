@@ -17,6 +17,7 @@ Settings (env vars; secrets come from ``op run --env-file=badger/.env.op``, tuni
 """
 
 import asyncio
+import contextlib
 import os
 import shlex
 import threading
@@ -221,6 +222,29 @@ def _model_config(config: dict, harbor_model_name: str | None) -> dict:
     return {**config, "model_name": model_name, "model_kwargs": model_kwargs}
 
 
+async def _run_in_daemon_thread(fn, *args):
+    """Like asyncio.to_thread, but in a daemon thread: asyncio.to_thread's executor is joined at
+    interpreter exit, so Ctrl+C or a Harbor timeout would hang until a blocked model call or a
+    retry backoff (up to 60 s per attempt) finished."""
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+
+    def resolve(result, error):
+        if not future.done():
+            future.set_exception(error) if error else future.set_result(result)
+
+    def target():
+        try:
+            outcome = (fn(*args), None)
+        except BaseException as e:
+            outcome = (None, e)
+        with contextlib.suppress(RuntimeError):  # loop already closed: nobody is waiting
+            loop.call_soon_threadsafe(resolve, *outcome)
+
+    threading.Thread(target=target, daemon=True, name="mini-swe-agent").start()
+    return await future
+
+
 class BadgerMiniAgent(BaseAgent):
     @staticmethod
     def name() -> str:
@@ -253,7 +277,7 @@ class BadgerMiniAgent(BaseAgent):
             **agent_config,
         )
         try:
-            result = await asyncio.to_thread(agent.run, instruction)
+            result = await _run_in_daemon_thread(agent.run, instruction)
         except asyncio.CancelledError:
             stop.set()  # the worker thread exits at its next model call or command
             raise
