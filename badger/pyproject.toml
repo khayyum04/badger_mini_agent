@@ -1,0 +1,21 @@
+[project]
+name = "badger-mini-agent"
+version = "0.1.0"
+description = "mini-swe-agent wired into Harbor as an external agent for Terminal-Bench 2.0 (Efficient Coder)"
+requires-python = ">=3.12"
+dependencies = [
+    "harbor>=0.13",
+    "mini-swe-agent",
+    "python-dotenv>=1.0",
+    "pyyaml",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["badger_mini"]
+
+[tool.setuptools.package-data]
+badger_mini = ["config/*.yaml"]

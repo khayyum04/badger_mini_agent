@@ -1,0 +1,33 @@
+# 30-task A/B subset from docs/research/full-89-0924-fix-priorities.md ("Experiment subset").
+# Target group (20): baseline failures with the most reasoning overruns.
+circuit-fibsqrt
+regex-chess
+winning-avg-corewars
+fix-ocaml-gc
+feal-differential-cryptanalysis
+schemelike-metacircular-eval
+video-processing
+custom-memory-heap-crash
+make-mips-interpreter
+mailman
+break-filter-js-from-html
+path-tracing-reverse
+path-tracing
+polyglot-rust-c
+protein-assembly
+write-compressor
+tune-mjcf
+polyglot-c-py
+prove-plus-comm
+raman-fitting
+# Regression group (10): baseline passes that still had overruns.
+portfolio-optimization
+feal-linear-cryptanalysis
+reshard-c4-data
+distribution-search
+extract-elf
+financial-document-processor
+regex-log
+torch-tensor-parallelism
+bn-fit-modify
+cancel-async-tasks

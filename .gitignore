@@ -186,3 +186,9 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
+
+# badger (Efficient Coder) layer
+badger/.env
+badger/.env.op
+jobs/
+badger/jobs/

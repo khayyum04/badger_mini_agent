@@ -1,0 +1,107 @@
+# mini-swe-agent config for Terminal-Bench 2.0, adapted from src/minisweagent/config/mini.yaml.
+# Endpoint settings (model id, URL, key, max_tokens, temperature) come from env vars — see
+# badger_mini/harbor_agent.py. Select another config with BADGER_CONFIG=<file>.
+agent:
+  system_template: |
+    You are an expert software engineer and Linux power user. You solve tasks autonomously inside a
+    Linux container by running bash commands. No human will answer questions; make reasonable
+    decisions yourself.
+  instance_template: |
+    Complete this task inside the container:
+
+    <task>
+    {{task}}
+    </task>
+
+    Your work is graded by automated tests that inspect the final state of the container (files,
+    installed programs, running services). Follow the instructions literally: exact file paths, names,
+    output formats and function signatures shown in the task.
+
+    ## How to work
+
+    1. Explore first: look at the working directory and the files the task mentions.
+    2. Take one small step per command, then read the result before deciding the next step.
+    3. Use the machine: when you need to compute, decode, parse, simulate or search, write a short
+       script and run it instead of working it out in your head. You have many turns.
+    4. As soon as you have any plausible answer, write the required output file(s). Overwrite them
+       when you improve them; a missing output file always fails.
+    5. Verify the result the way the tests likely will (run it, import it, check the output format).
+    6. Keep the deliverable clean: build and experiment in /tmp, not in the output directory.
+    7. When done, finish with: `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT`
+       Do not combine it with any other command. <important>After this command, you cannot continue working on this task.</important>
+
+    ## Command execution rules
+
+    - Every response MUST include exactly one bash tool call. Keep the reasoning text short.
+    - Each command runs in a new subshell: `cd` and exported variables do not persist. Chain with
+      `cd /path && ...` or write settings to a file.
+    - Commands are killed after {{timeout}} seconds. Run long builds, downloads or training in the
+      background with a log (`nohup cmd > /tmp/job.log 2>&1 &`), then check the log in later commands.
+    - Stop processes by PID (`kill <pid>`), never with `pkill -f`, which can kill your own shell.
+    - Never run interactive programs (editors, pagers, REPLs waiting for input); use non-interactive flags.
+
+    ## Useful command examples
+
+    ### Create a file
+    ```bash
+    cat <<'EOF' > /app/script.py
+    print("hello")
+    EOF
+    ```
+
+    ### Edit a file
+    ```bash
+    sed -i 's/old_string/new_string/g' filename.py
+    ```
+
+    ### View part of a file with line numbers
+    ```bash
+    nl -ba filename.py | sed -n '10,40p'
+    ```
+  step_limit: 100
+  cost_limit: 0  # cost is unknown for self-hosted models; token usage is tracked by Harbor instead
+  max_consecutive_format_errors: 5
+environment:
+  timeout: 180
+  env:
+    PAGER: cat
+    MANPAGER: cat
+    LESS: -R
+    PIP_PROGRESS_BAR: 'off'
+    TQDM_DISABLE: '1'
+    DEBIAN_FRONTEND: noninteractive
+model:
+  model_class: litellm
+  cost_tracking: ignore_errors
+  observation_template: |
+    {%- if output.output | length < 10000 -%}
+    {
+      "returncode": {{ output.returncode }},
+      "output": {{ output.output | tojson }}
+      {%- if output.exception_info %}, "exception_info": {{ output.exception_info | tojson }}{% endif %}
+    }
+    {%- else -%}
+    {
+      "returncode": {{ output.returncode }},
+      "output_head": {{ output.output[:5000] | tojson }},
+      "output_tail": {{ output.output[-5000:] | tojson }},
+      "elided_chars": {{ output.output | length - 10000 }},
+      "warning": "Output too long. Redirect to a file and search it with grep/head/tail or a script."
+      {%- if output.exception_info %}, "exception_info": {{ output.exception_info | tojson }}{% endif %}
+    }
+    {%- endif -%}
+  format_error_template: |
+    {% if finish_reason is defined and (finish_reason == "length" or (finish_reason == "tool_calls" and not has_tool_calls)) -%}
+    You ran out of thinking budget before making a tool call (finish_reason={{ finish_reason }}), so that response was discarded. Do not work the problem out in your head: take one small step, e.g. a short script that tests one idea, and reply with exactly one bash tool call.
+    {%- else -%}
+    Tool call error:
+
+    <error>
+    {{error}}
+    </error>
+
+    Every response must call the 'bash' tool exactly once with {"command": "your_command_here"}.
+    To finish, call it with `echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` and no other command.
+    {%- endif %}
+  model_kwargs:
+    drop_params: true
